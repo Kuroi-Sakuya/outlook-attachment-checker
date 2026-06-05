@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>附件检查助手</title>
+    <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <style>
+      body {
+        font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        margin: 0;
+        padding: 20px;
+        color: #242424;
+        line-height: 1.6;
+      }
+      .badge {
+        display: inline-block;
+        background: #0f6cbd;
+        color: #fff;
+        border-radius: 6px;
+        padding: 2px 10px;
+        font-size: 12px;
+        margin-bottom: 12px;
+      }
+      h1 { font-size: 18px; margin: 0 0 8px; }
+      p { font-size: 14px; margin: 8px 0; }
+      .muted { color: #616161; font-size: 12px; }
+      code { background: #f3f2f1; padding: 1px 4px; border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <div class="badge">已启用 · Enabled</div>
+    <h1>📎 附件检查助手</h1>
+    <p>
+      当你发送邮件时，如果正文里提到了
+      <code>附件</code> / <code>随函附送</code> / <code>attached</code>
+      等字样，但邮件里还没有添加附件，会自动弹出提醒。
+    </p>
+    <p class="muted">
+      所有检查均在本机 Outlook 内完成，邮件内容不会上传到任何地方。
+    </p>
+    <script>
+      Office.onReady(function () {
+        // 信息展示页面，无需额外逻辑。
+      });
+    </script>
+  </body>
+</html>
