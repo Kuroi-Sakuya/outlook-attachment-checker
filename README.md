@@ -3,77 +3,73 @@
 发送邮件时，如果正文提到了「附件 / 随函附送 / attached」等字样，但还没有添加附件，
 就在发送前弹出提醒。所有检查都在本机 Outlook 内完成，邮件内容不会上传。
 
----
-
-## 为什么 Outlook 会报“无法加载这个加载项”
-
-这是**托管地址**的问题，不是代码的问题。
-
-Outlook 加载项真正“被加载”的，不是这个仓库里的文件，而是**清单 (manifest.xml)**
-里写的那些 `https://...` 网址。Outlook 会去这些网址下载 `commands.v3.html`、
-`launchevent.v3.js` 来运行。
-
-如果清单里的网址指向下面这两种地址，浏览器/Outlook 就**拒绝把它当网页或脚本运行**，
-于是报“无法加载这个加载项”：
-
-| 错误的托管地址 | 服务器返回的类型 | 结果 |
-| --- | --- | --- |
-| `raw.githubusercontent.com/.../launchevent.v3.js` | `Content-Type: text/plain` + `X-Content-Type-Options: nosniff` + `Content-Security-Policy: sandbox` | 浏览器禁止执行，加载失败 |
-| `github.com/.../blob/.../commands.v3.html` | 返回的是 GitHub 的网页外壳，不是文件本身 | 内容不对，加载失败 |
-
-> 实测本仓库的 raw 地址返回的就是 `content-type: text/plain` + `nosniff` + `sandbox`，
-> 这正是“无法加载”的直接原因。
-
-**正确做法：用一个会以正确 MIME 类型、通过 HTTPS 提供静态网页的主机。**
-最简单免费的就是 **GitHub Pages**（地址形如 `https://<用户名>.github.io/<仓库名>/...`）。
+这是一个**发送时事件 (Smart Alerts / `OnMessageSend`)** 类型的 Outlook 加载项。
 
 ---
 
-## 修复步骤
+## 排查记录：“无法加载这个加载项 / 一直卡在正在处理”
 
-### 1. 开启 GitHub Pages
-1. 打开仓库 → **Settings** → 左侧 **Pages**
-2. **Source** 选 **Deploy from a branch**
-3. **Branch** 选 `main`，文件夹选 `/ (root)`，点 **Save**
-4. 等 1–2 分钟，页面顶部会显示站点地址：
-   `https://kuroi-sakuya.github.io/outlook-attachment-checker/`
+通过在网页版 Outlook 用 F12 控制台抓取真实日志，逐项排除后定位到根因：
 
-### 2. 确认文件能直接打开
-在浏览器里逐个打开下面三个地址，应当能看到网页/脚本内容（而不是下载、也不是 404）：
+- 托管正常：文件部署在 GitHub Pages（`https://kuroi-sakuya.github.io/outlook-attachment-checker/`），
+  HTTPS、MIME 类型、可达性都没问题。
+- 账户正常：Microsoft 365 工作/学校邮箱（Exchange Online），支持发送时事件。
+- 清单与代码结构正常。
+- **真正的症状**：点发送后，控制台只出现 `>>> ACHK ...: 脚本已加载，... 已关联完成`，
+  **再也没有 `onMessageSendHandler 已触发`**。即——**脚本加载并注册成功了，但点发送时
+  处理函数根本没有被调用**，于是永远不会调用 `event.completed`，Outlook 就卡在
+  “附件检查助手 正在处理邮件… 所花时间超过预期”。
 
-- https://kuroi-sakuya.github.io/outlook-attachment-checker/commands.v3.html
-- https://kuroi-sakuya.github.io/outlook-attachment-checker/launchevent.v3.js
-- https://kuroi-sakuya.github.io/outlook-attachment-checker/taskpane.html
+“注册了却没被调用”最常见的两个原因：
 
-### 3. 用本仓库的 `manifest.xml` 重新提交
-- 本仓库已附带一份配置好 GitHub Pages 地址的 `manifest.xml`。
-- 如果管理员之前已经提交过一版清单，请把 `manifest.xml` 里的 `<Id>` 换成**原来那一版的同一个 GUID**，
-  这样在 Microsoft 365 管理中心里是“更新”而不是“新增”。
-- 在 **Microsoft 365 管理中心 → 设置 → 集成应用 (Integrated apps)** 重新上传/更新这份清单。
+1. 管理中心实际部署的清单与代码里的 `FunctionName` 对不上（叫了一个没注册的函数名）。
+2. 线上文件 / 部署被缓存成了旧状态。
 
-### 4. 在 Outlook 里验证
-- 关闭并重新打开 Outlook（集中部署的更新最多可能要等几十分钟到 24 小时才生效）。
-- 新建一封邮件，正文写“见附件”但不加附件，点发送，应当弹出提醒。
+### 修复（v4，一次性覆盖以上两种）
+
+- `launchevent.v4.js`：在 v3 基础上加固——
+  1. **多函数名注册**：用多个常见候选名都关联到同一处理函数，无论部署的清单写的是哪个名字都能命中；
+  2. **硬性兜底超时**（3.5 秒必放行）+ 每个异步调用单独的短超时，彻底杜绝“卡死”；
+  3. 日志横幅改为 `>>> ACHK v4:`，方便确认新文件是否真正生效。
+- `commands.v4.html`：引用 v4 脚本的运行载体页。
+- `manifest.xml`：保留原 `<Id>`（在管理中心里是“更新”而非“新增”），运行时改指向
+  **新文件名 v4**（强制绕开缓存），`FunctionName` 保持 `onMessageSendHandler`。
+
+### 部署 & 验证步骤
+
+1. 把本分支合并到 `main`（GitHub Pages 从 `main` 根目录发布，约 1–2 分钟后新文件上线）。
+2. 浏览器打开确认新文件已上线、能看到内容：
+   - https://kuroi-sakuya.github.io/outlook-attachment-checker/launchevent.v4.js
+   - https://kuroi-sakuya.github.io/outlook-attachment-checker/commands.v4.html
+3. 请管理员在 **Microsoft 365 管理中心 → 集成应用** 用本仓库的 `manifest.xml`
+   **更新**该加载项（建议先移除旧的再重新部署，确保干净刷新）。
+4. 在网页版 Outlook 里按 F12 → 控制台 Filter 输入 `ACHK` → 清空 → 写一封正文含“见附件”
+   的邮件点发送，按下表判断：
+
+| 控制台现象 | 含义 |
+| --- | --- |
+| 看到 `ACHK v4 … 已触发` 且能正常拦截/放行 | ✅ 修复成功 |
+| 看到 `ACHK v4` 横幅、但仍只停在“脚本已加载”、无“已触发” | 部署的清单没指到本函数 → 让管理员**移除后重新部署**本 `manifest.xml` |
+| 连 `ACHK v4` 横幅都没有 | 线上还是旧文件 → 确认已合并到 `main` 且 Pages 已发布、清单已更新 |
 
 ---
 
 ## 技术要点
 
-- 这是**发送时事件 (Smart Alerts / `OnMessageSend`)** 类型的加载项，要求邮箱满足
-  **Mailbox 需求集 1.12**（较新的 Outlook 才支持）。
-- 处理函数是 `launchevent.v3.js` 里的 `onMessageSendHandler`，通过
-  `Office.actions.associate("onMessageSendHandler", ...)` 注册。
-- `SendMode="SoftBlock"`：提醒后用户仍可选择继续发送。
-- 托管主机的硬性要求：**HTTPS**、**正确的 MIME 类型**（.html → `text/html`，
-  .js → `text/javascript`）、**不带 `nosniff`/`sandbox` 的封锁**。GitHub Pages 满足这些。
+- 发送时事件要求 **Mailbox 需求集 1.12**，且邮箱须为 **Exchange Online**（个人 Outlook.com、
+  Gmail/IMAP、本地 Exchange 均不支持）。
+- 处理函数通过 `Office.actions.associate("onMessageSendHandler", ...)` 注册；
+  清单 `<LaunchEvent FunctionName>` 必须与之一致。
+- `SendMode="PromptUser"`：提醒后用户仍可选择“仍然发送”。
+- 托管主机要求：HTTPS + 正确 MIME 类型；GitHub Pages 满足，
+  但 `raw.githubusercontent.com`、`github.com/.../blob/...` **不行**（会被当成纯文本/网页外壳）。
 
 ## 文件说明
 
 | 文件 | 作用 |
 | --- | --- |
-| `manifest.xml` | 加载项清单（提交给 Outlook/管理中心的就是它） |
-| `commands.v3.html` | 事件运行时承载页，加载 office.js 与处理脚本 |
-| `launchevent.v3.js` | 发送时检查逻辑（加固 + 日志版，当前使用） |
-| `taskpane.html` | 信息展示页 |
+| `manifest.xml` | 加载项清单（提交给管理中心的就是它），当前指向 v4 |
+| `commands.v4.html` / `launchevent.v4.js` | **当前使用**：运行载体页 + 加固后的发送时检查逻辑 |
+| `taskpane.html` | 功能区按钮打开的信息展示页 |
 | `assets/` | 图标 |
-| `*.v2.*` / 无后缀版 | 早期版本，保留备查 |
+| `*.v3.*` / `*.v2.*` / 无后缀版 | 早期版本，保留备查 |

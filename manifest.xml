@@ -1,15 +1,14 @@
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
-  附件检查助手 (Attachment Checker) — Outlook 加载项清单 / manifest
+  附件检查助手 (Attachment Checker) —— Outlook 加载项清单
 
-  ⚠️ 关键：下面所有 https://kuroi-sakuya.github.io/... 的地址，必须能在浏览器里
-     直接打开并看到“网页/脚本本身”。这要求仓库已开启 GitHub Pages（见 README.md）。
-     不要把这些地址换成 raw.githubusercontent.com 或 github.com/.../blob/...，
-     那两种地址会被浏览器当成纯文本 (text/plain + nosniff)，Outlook 无法加载，
-     就会报“无法加载这个加载项”。
+  这份清单基于你实际部署的那一版（保留同一个 <Id>，所以在管理中心里是“更新”而非“新增”），
+  只把发送时事件的运行时改指向加固后的 v4 文件（commands.v4.html / launchevent.v4.js）。
+  换新文件名 = 强制绕开 Outlook 与 GitHub Pages 的一切缓存。
 
-  如果管理员之前已经提交过一版清单，建议把下面的 <Id> 换成你原来那一版的同一个
-  GUID，这样在管理中心里是“更新”而不是“新增”。
+  ⚠️ 关键：<LaunchEvent FunctionName="..."> 必须与 launchevent.v4.js 里
+     Office.actions.associate(...) 注册的名字一致。这里用 onMessageSendHandler，
+     而 v4 脚本同时注册了多个候选名做兜底。
 -->
 <OfficeApp
   xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
@@ -18,32 +17,26 @@
   xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
   xsi:type="MailApp">
 
-  <Id>8ded2b84-a0ab-4461-a110-c533a3dd2385</Id>
-  <Version>1.0.0.0</Version>
-  <ProviderName>Kuroi-Sakuya</ProviderName>
-  <DefaultLocale>zh-CN</DefaultLocale>
+  <Id>2C9CC32E-1EB3-43FA-8D42-A8C199D01B5A</Id>
+  <Version>1.0.4.0</Version>
+  <ProviderName>Personal</ProviderName>
+  <DefaultLocale>zh-cn</DefaultLocale>
   <DisplayName DefaultValue="附件检查助手" />
-  <Description DefaultValue="发送邮件时，如果正文提到“附件/随函附送/attached”等字样但没有添加附件，自动提醒。" />
+  <Description DefaultValue="发送邮件前自动检查：正文提到附件却没有添加时进行提醒。" />
   <IconUrl DefaultValue="https://kuroi-sakuya.github.io/outlook-attachment-checker/assets/icon-64.png" />
   <HighResolutionIconUrl DefaultValue="https://kuroi-sakuya.github.io/outlook-attachment-checker/assets/icon-128.png" />
-  <SupportUrl DefaultValue="https://github.com/Kuroi-Sakuya/outlook-attachment-checker" />
-
-  <!-- 加载项要访问的域，必须包含所有上面用到的主机 -->
+  <SupportUrl DefaultValue="https://kuroi-sakuya.github.io/outlook-attachment-checker/taskpane.html" />
   <AppDomains>
     <AppDomain>https://kuroi-sakuya.github.io</AppDomain>
   </AppDomains>
-
   <Hosts>
     <Host Name="Mailbox" />
   </Hosts>
-
-  <!-- 发送时事件 (Smart Alerts / OnMessageSend) 需要 Mailbox 1.12 -->
   <Requirements>
     <Sets>
-      <Set Name="Mailbox" MinVersion="1.12" />
+      <Set Name="Mailbox" MinVersion="1.1" />
     </Sets>
   </Requirements>
-
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
@@ -52,9 +45,7 @@
       </DesktopSettings>
     </Form>
   </FormSettings>
-
   <Permissions>ReadWriteItem</Permissions>
-
   <Rule xsi:type="RuleCollection" Mode="Or">
     <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read" />
   </Rule>
@@ -62,44 +53,78 @@
 
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
     <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
-
       <Requirements>
         <bt:Sets DefaultMinVersion="1.12">
           <bt:Set Name="Mailbox" />
         </bt:Sets>
       </Requirements>
-
       <Hosts>
         <Host xsi:type="MailHost">
-
-          <!-- 事件运行时：承载页 + 处理脚本 -->
+          <!-- 发送时事件在轻量运行时中执行 -->
           <Runtimes>
+            <!-- 网页版 / Mac / 新版 Windows Outlook 使用 HTML 运行时 -->
             <Runtime resid="WebViewRuntime.Url">
+              <!-- 经典版 Windows Outlook 使用纯 JS 运行时 -->
               <Override type="javascript" resid="JSRuntime.Url" />
             </Runtime>
           </Runtimes>
-
           <DesktopFormFactor>
-            <FunctionFile resid="WebViewRuntime.Url" />
+            <FunctionFile resid="Commands.Url" />
 
-            <!-- 发送时触发，调用 launchevent.v3.js 里的 onMessageSendHandler -->
+            <!-- 撰写邮件时，在功能区放一个按钮（用于确认插件已安装/查看说明） -->
+            <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="msgComposeGroup">
+                  <Label resid="GroupLabel" />
+                  <Control xsi:type="Button" id="msgComposeOpenPaneButton">
+                    <Label resid="TaskpaneButton.Label" />
+                    <Supertip>
+                      <Title resid="TaskpaneButton.Label" />
+                      <Description resid="TaskpaneButton.Tooltip" />
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16x16" />
+                      <bt:Image size="32" resid="Icon.32x32" />
+                      <bt:Image size="80" resid="Icon.80x80" />
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="Taskpane.Url" />
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+
+            <!-- 核心：发送邮件时触发事件处理（PromptUser = 提醒但允许“仍要发送”） -->
             <ExtensionPoint xsi:type="LaunchEvent">
               <LaunchEvents>
-                <LaunchEvent Type="OnMessageSend" FunctionName="onMessageSendHandler" SendMode="SoftBlock" />
+                <LaunchEvent Type="OnMessageSend" FunctionName="onMessageSendHandler" SendMode="PromptUser" />
               </LaunchEvents>
               <SourceLocation resid="WebViewRuntime.Url" />
             </ExtensionPoint>
           </DesktopFormFactor>
         </Host>
       </Hosts>
-
       <Resources>
+        <bt:Images>
+          <bt:Image id="Icon.16x16" DefaultValue="https://kuroi-sakuya.github.io/outlook-attachment-checker/assets/icon-16.png" />
+          <bt:Image id="Icon.32x32" DefaultValue="https://kuroi-sakuya.github.io/outlook-attachment-checker/assets/icon-32.png" />
+          <bt:Image id="Icon.80x80" DefaultValue="https://kuroi-sakuya.github.io/outlook-attachment-checker/assets/icon-80.png" />
+        </bt:Images>
         <bt:Urls>
-          <bt:Url id="WebViewRuntime.Url" DefaultValue="https://kuroi-sakuya.github.io/outlook-attachment-checker/commands.v3.html" />
-          <bt:Url id="JSRuntime.Url" DefaultValue="https://kuroi-sakuya.github.io/outlook-attachment-checker/launchevent.v3.js" />
+          <bt:Url id="Commands.Url" DefaultValue="https://kuroi-sakuya.github.io/outlook-attachment-checker/commands.v4.html" />
+          <bt:Url id="Taskpane.Url" DefaultValue="https://kuroi-sakuya.github.io/outlook-attachment-checker/taskpane.html" />
+          <bt:Url id="WebViewRuntime.Url" DefaultValue="https://kuroi-sakuya.github.io/outlook-attachment-checker/commands.v4.html" />
+          <bt:Url id="JSRuntime.Url" DefaultValue="https://kuroi-sakuya.github.io/outlook-attachment-checker/launchevent.v4.js" />
         </bt:Urls>
+        <bt:ShortStrings>
+          <bt:String id="GroupLabel" DefaultValue="附件检查助手" />
+          <bt:String id="TaskpaneButton.Label" DefaultValue="附件检查助手" />
+        </bt:ShortStrings>
+        <bt:LongStrings>
+          <bt:String id="TaskpaneButton.Tooltip" DefaultValue="查看附件检查助手的状态与说明。" />
+        </bt:LongStrings>
       </Resources>
-
     </VersionOverrides>
   </VersionOverrides>
 </OfficeApp>
